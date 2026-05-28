@@ -1,16 +1,15 @@
-# Linux/OpenWrt Raw ESP-Touch Sender
+# Linux/OpenWrt UDP ESP-Touch Sender
 
-This is a small C command-line sender for ESP-Touch provisioning over raw
-802.11 frame injection or UDP broadcast. It supports ESP-Touch v1 and
-unencrypted ESP-Touch v2.
+This is a small C command-line sender for ESP-Touch provisioning over UDP
+broadcast. It supports ESP-Touch v1 and unencrypted ESP-Touch v2.
 
-The program does not switch Wi-Fi mode or channel by itself. Prepare the
-wireless interface with `iw` or an OpenWrt script, then pass the monitor
-interface to this program when using raw mode.
+It matches the common Java/Android client model: the program sends UDP packets
+with protocol-specific payload lengths, and the Wi-Fi driver/AP turns those
+packets into 802.11 air frames that the ESP device can sniff while in
+SmartConfig mode.
 
-It implements the ESP-Touch length streams used by Espressif's ESP8266/ESP32
-SmartConfig receiver. It does not implement AirKiss or vendor-private
-protocols. ESP-Touch v2 AES encryption is not implemented.
+It does not implement AirKiss or vendor-private protocols. ESP-Touch v2 AES
+encryption is not implemented.
 
 ## Build
 
@@ -26,70 +25,75 @@ OpenWrt SDK cross build:
 make CC=<target-openwrt-linux-musl-gcc>
 ```
 
-## Prepare Monitor Interface
-
-Example on Linux/OpenWrt:
-
-```sh
-iw dev wlan0 interface add mon0 type monitor
-ip link set mon0 up
-iw dev mon0 set channel 6
-```
-
-Use the channel of the AP that the IoT device should join. If the target device
-is scanning all channels, you can run the sender once per channel from a shell
-script.
-
 ## Usage
 
+ESP-Touch v1, Android-app style:
+
 ```sh
-sudo ./smartconfig --send raw --type v1 -i mon0 -s "YourSSID" -p "YourPassword" \
-  -a "aa:bb:cc:dd:ee:ff" -I "192.168.1.2"
+sudo ./smartconfig --type v1 -s "YourSSID" -p "YourPassword"
 ```
 
 ESP-Touch v2:
 
 ```sh
-sudo ./smartconfig --send raw --type v2 -i mon0 -s "YourSSID" -p "YourPassword" \
-  -a "aa:bb:cc:dd:ee:ff" -I "192.168.1.2"
+sudo ./smartconfig --type v2 -s "YourSSID" -p "YourPassword"
 ```
 
-UDP broadcast mode:
+If `-i`, `-I`, and `-b` are all omitted, the tool sends on every non-loopback
+IPv4 interface that has a broadcast address. For ESP-Touch v1, each interface
+gets its own packet stream because the sender IP is encoded into the data.
 
-```sh
-sudo ./smartconfig --send udp --type v1 -i wlan0 -s "YourSSID" -p "YourPassword" \
-  -a "aa:bb:cc:dd:ee:ff" -I "192.168.1.2" -b 255.255.255.255 -P 7001
+If any of `-i`, `-I`, or `-b` is provided, the tool uses single-interface mode
+and fills in the remaining values automatically when possible.
+
+If `-a` is omitted, it uses `00:00:00:00:00:00`, matching the Android app in
+`UsbTerminal`.
+
+By default the tool also listens for Espressif's SmartConfig ACK on UDP port
+18266. A successful device reply is printed as:
+
+```text
+ACK success: mac=aa:bb:cc:dd:ee:ff ip=192.168.1.123
 ```
+
+Use `--no-ack` to keep the old send-only behavior.
 
 Useful options:
 
 ```text
 -t, --type TYPE         ESP-Touch type: v1 or v2, default v1
--S, --send MODE         Send mode: raw or udp, default raw
--i, --iface IFACE       Interface: monitor iface for raw, outgoing iface for udp
+-i, --iface IFACE       Outgoing Wi-Fi interface, default all broadcast-capable IPv4 interfaces
 -s, --ssid SSID         Wi-Fi SSID to provision
 -p, --password PASS     Wi-Fi password to provision
--m, --src-mac MAC       Transmitter MAC, default interface MAC
--a, --bssid MAC         Target AP BSSID, required for ESP-Touch
--I, --ip ADDR           Sender/local IPv4 address, default 192.168.1.2
--b, --broadcast ADDR    UDP broadcast address, default 255.255.255.255
+-a, --bssid MAC         Target AP BSSID, default 00:00:00:00:00:00
+-I, --ip ADDR           Sender/local IPv4 address, default auto
+-b, --broadcast ADDR    UDP broadcast address, default auto
 -P, --port PORT         UDP destination port, default 7001
+-A, --ack-port PORT     UDP ACK listen port, default 18266
+-W, --ack-wait-ms MS    Total ACK wait time, default 60000
+-N, --no-ack            Do not listen for ESP-Touch success ACK
 -M, --app-port-mark N   ESP-Touch v2 app port mark 0..3, default 0
 -r, --repeat COUNT      Number of full transmit cycles, default 80
--d, --delay-us USEC     Delay between packets/frames, default 8000
--n, --dry-run           Print the ESP-Touch lengths without sending frames
+-d, --delay-us USEC     Delay between UDP packets, default 8000
+-n, --dry-run           Print the ESP-Touch lengths without sending
 -v, --verbose           Print transmit details
 -h, --help              Show help
 ```
 
-Root is required for raw mode because the sender opens an `AF_PACKET/SOCK_RAW`
-socket. UDP mode usually also needs root when binding to a specific interface
-with `SO_BINDTODEVICE`.
+Root is usually required because the sender binds the socket to a specific
+interface with `SO_BINDTODEVICE`.
 
 Find the AP BSSID with:
 
 ```sh
 iw dev wlan0 scan | grep -A5 'SSID: YourSSID'
+```
+
+On OpenWrt, use the AP interface that actually transmits on the target 2.4 GHz
+radio. It may be named `wlan0`, `phy0-ap0`, or similar:
+
+```sh
+iw dev
 ```
 
 ## ESP-Touch v1 Format
@@ -114,31 +118,6 @@ each byte is encoded as three lengths:
   0x01 + sequence_index     + 40
   0x00 + crc_low/data_low   + 40
 ```
-
-The raw injected packet is:
-
-```text
-radiotap header, 8 bytes
-802.11 data header, 24 bytes
-variable body, body length equal to the ESP-Touch length
-```
-
-The ESP device must be in SmartConfig/ESP-Touch mode and sniffing the same
-2.4 GHz channel.
-
-## UDP Mode
-
-UDP mode sends the same ESP-Touch length stream as UDP broadcast payload
-lengths. This is how phone apps commonly trigger SmartConfig through the normal
-Wi-Fi network stack:
-
-```text
-app/program -> UDP broadcast -> Wi-Fi driver/AP -> 802.11 air frames
-```
-
-For an OpenWrt router, UDP mode is useful when the router/AP interface will
-actually transmit those broadcast frames over the target 2.4 GHz radio. Raw
-mode is more direct because it injects the 802.11 frame lengths itself.
 
 ## ESP-Touch v2 Format
 
