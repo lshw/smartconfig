@@ -11,6 +11,12 @@ SmartConfig mode.
 It does not implement AirKiss or vendor-private protocols. ESP-Touch v2 AES
 encryption is not implemented.
 
+## Demo
+
+<video src="./test.mp4" controls width="720"></video>
+
+[Download the demo video](./test.mp4)
+
 ## Build
 
 Native build:
@@ -135,3 +141,7 @@ data length          = (bit_index << 7) | (1 << 6) | six_bit_data
 The v2 header contains SSID length, password length, BSSID CRC, app port mark,
 version, IPv4 flag, and header CRC. Password and SSID bytes are then sent in
 6-byte or 5-byte groups depending on whether byte encoding is required.
+
+## License
+
+This project is licensed under GPL-3.0-only. See [LICENSE](./LICENSE).
