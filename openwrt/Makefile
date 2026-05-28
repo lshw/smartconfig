@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=smartconfig
@@ -5,7 +7,7 @@ PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 
 PKG_MAINTAINER:=liushiwei
-PKG_LICENSE:=MIT
+PKG_LICENSE:=GPL-3.0-only
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 

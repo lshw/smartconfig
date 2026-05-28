@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-only
+
 TARGET := smartconfig
 SRC := src/smartconfig.c
 OBJ := $(SRC:.c=.o)
