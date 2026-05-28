@@ -1187,8 +1187,7 @@ static int poll_ack(int ack_fd, const struct options *opt, int timeout_ms)
     return 1;
 }
 
-static int send_len_udp(int fd, const struct sockaddr_in *dst, size_t len,
-                        unsigned delay_us)
+static int send_udp_payload(int fd, const struct sockaddr_in *dst, size_t len)
 {
     static uint8_t packet[MAX_BODY_LEN];
 
@@ -1206,6 +1205,16 @@ static int send_len_udp(int fd, const struct sockaddr_in *dst, size_t len,
     }
     if ((size_t)sent != len) {
         fprintf(stderr, "short send: %zd/%zu\n", sent, len);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int send_len_udp(int fd, const struct sockaddr_in *dst, size_t len,
+                        unsigned delay_us)
+{
+    if (send_udp_payload(fd, dst, len) == -1) {
         return -1;
     }
 
@@ -1295,34 +1304,35 @@ static int transmit_targets(struct tx_target targets[MAX_TX_TARGETS],
     for (unsigned cycle = 0; cycle < opt->repeat; cycle++) {
         for (size_t i = 0; i < targets[0].stream.len; i++) {
             for (size_t t = 0; t < target_count; t++) {
-                if (send_len_udp(targets[t].fd, &targets[t].dst,
-                                 targets[t].stream.lengths[i],
-                                 opt->delay_us) == -1) {
+                if (send_udp_payload(targets[t].fd, &targets[t].dst,
+                                     targets[t].stream.lengths[i]) == -1) {
                     fprintf(stderr, "send failed on %s\n", targets[t].iface);
                     return -1;
                 }
+            }
 
-                if (ack_fd != -1) {
-                    int64_t now_ms = monotonic_ms();
-                    if (now_ms == -1) {
-                        perror("clock_gettime");
-                        return -1;
-                    }
-                    int64_t elapsed_ms = now_ms - start_ms;
-                    if (elapsed_ms >= (int64_t)opt->ack_wait_ms) {
-                        fprintf(stderr, "timed out waiting for ESP-Touch ACK\n");
-                        return 1;
-                    }
-
-                    int wait_ms = (int)((int64_t)opt->ack_wait_ms - elapsed_ms);
-                    if (wait_ms > (int)(opt->delay_us / 1000U + 1U)) {
-                        wait_ms = (int)(opt->delay_us / 1000U + 1U);
-                    }
-                    int ack = poll_ack(ack_fd, opt, wait_ms);
-                    if (ack != 0) {
-                        return ack > 0 ? 0 : -1;
-                    }
+            if (ack_fd != -1) {
+                int64_t now_ms = monotonic_ms();
+                if (now_ms == -1) {
+                    perror("clock_gettime");
+                    return -1;
                 }
+                int64_t elapsed_ms = now_ms - start_ms;
+                if (elapsed_ms >= (int64_t)opt->ack_wait_ms) {
+                    fprintf(stderr, "timed out waiting for ESP-Touch ACK\n");
+                    return 1;
+                }
+
+                int wait_ms = (int)((int64_t)opt->ack_wait_ms - elapsed_ms);
+                if (wait_ms > (int)(opt->delay_us / 1000U + 1U)) {
+                    wait_ms = (int)(opt->delay_us / 1000U + 1U);
+                }
+                int ack = poll_ack(ack_fd, opt, wait_ms);
+                if (ack != 0) {
+                    return ack > 0 ? 0 : -1;
+                }
+            } else if (sleep_us(opt->delay_us) == -1) {
+                return -1;
             }
         }
 
