@@ -19,9 +19,9 @@ define Package/smartconfig
 endef
 
 define Package/smartconfig/description
-  A small C sender for length-encoded SmartConfig-style provisioning over raw
-  802.11 frame injection. The wireless interface must already be in monitor
-  mode and on the desired channel.
+  A small C sender for ESP-Touch provisioning over UDP broadcast. It can infer
+  the outgoing interface and local address, and can listen for Espressif's
+  SmartConfig ACK on UDP port 18266.
 endef
 
 define Build/Prepare
