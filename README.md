@@ -1,5 +1,7 @@
 # Linux/OpenWrt UDP ESP-Touch Sender
 
+[中文说明](./README.zh-CN.md)
+
 This is a small C command-line sender for ESP-Touch provisioning over UDP
 broadcast. It supports ESP-Touch v1 and unencrypted ESP-Touch v2.
 
